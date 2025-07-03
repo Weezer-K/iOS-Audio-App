@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C04AC0112E16464C00F753FE /* TwinMind-Project-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = C04AC0102E16464C00F753FE /* TwinMind-Project-Info.plist */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		C04ABFCE2E15DDAD00F753FE /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +31,7 @@
 		C04ABFBC2E15DDA900F753FE /* TwinMind Project.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TwinMind Project.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C04ABFCD2E15DDAD00F753FE /* TwinMind ProjectTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TwinMind ProjectTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C04ABFD72E15DDAD00F753FE /* TwinMind ProjectUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "TwinMind ProjectUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C04AC0102E16464C00F753FE /* TwinMind-Project-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "TwinMind-Project-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -75,6 +80,7 @@
 		C04ABFB32E15DDA900F753FE = {
 			isa = PBXGroup;
 			children = (
+				C04AC0102E16464C00F753FE /* TwinMind-Project-Info.plist */,
 				C04ABFBE2E15DDA900F753FE /* TwinMind Project */,
 				C04ABFD02E15DDAD00F753FE /* TwinMind ProjectTests */,
 				C04ABFDA2E15DDAD00F753FE /* TwinMind ProjectUITests */,
@@ -212,6 +218,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C04AC0112E16464C00F753FE /* TwinMind-Project-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -392,8 +399,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"TwinMind Project/Preview Content\"";
+				DEVELOPMENT_TEAM = RT636Y72K8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_FILE[sdk=*]" = "TwinMind-Project-Info.plist";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -429,8 +438,10 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"TwinMind Project/Preview Content\"";
+				DEVELOPMENT_TEAM = RT636Y72K8;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				"INFOPLIST_FILE[sdk=*]" = "TwinMind-Project-Info.plist";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

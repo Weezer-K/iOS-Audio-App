@@ -1,193 +1,232 @@
 //
 //  AudioRecorderViewModel.swift
-//  TwinMind Project
-//
-//  Created by Boba Fett on 7/2/25.
 //
 
 import SwiftUI
 import AVFoundation
-import Combine
 import SwiftData
+import CryptoKit
 
-class AudioRecorderViewModel: ObservableObject {
-    @Published var isRecording = false
-    @Published var audioLevel: Float = 0.0
+enum RecordingQuality: String, CaseIterable, Identifiable {
+    case low
+    case medium
+    case high
 
-    private let engine = AVAudioEngine()
-    private var audioFile: AVAudioFile?
-    private let session = AVAudioSession.sharedInstance()
-    private var outputURL: URL?
-    private var recordingQueue = DispatchQueue(label: "RecordingQueue")
+    var id: String { rawValue }
 
-    private weak var playerViewModel: AudioPlayerViewModel?
-    private var notificationObservers: [NSObjectProtocol] = []
-
-    init(playerViewModel: AudioPlayerViewModel? = nil) {
-        self.playerViewModel = playerViewModel
-        setupNotifications()
-        requestPermission()
-    }
-
-    private func requestPermission() {
-        session.requestRecordPermission { granted in
-            DispatchQueue.main.async {
-                if !granted {
-                    print("Microphone permission denied.")
-                }
-            }
+    var description: String {
+        switch self {
+        case .low: return "Low"
+        case .medium: return "Medium"
+        case .high: return "High"
         }
     }
 
-    private func setupNotifications() {
-        let center = NotificationCenter.default
-        notificationObservers.append(center.addObserver(
-            forName: AVAudioSession.interruptionNotification,
-            object: session,
-            queue: .main
-        ) { [weak self] notification in
-            self?.handleInterruption(notification)
-        })
+    var settings: [String: Any] {
+        switch self {
+        case .low:
+            return [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 22050,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.min.rawValue
+            ]
+        case .medium:
+            return [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 44100,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue
+            ]
+        case .high:
+            return [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 48000,
+                AVNumberOfChannelsKey: 2,
+                AVEncoderAudioQualityKey: AVAudioQuality.max.rawValue
+            ]
+        }
+    }
+}
 
-        notificationObservers.append(center.addObserver(
-            forName: AVAudioSession.routeChangeNotification,
-            object: session,
-            queue: .main
-        ) { [weak self] notification in
-            self?.handleRouteChange(notification)
-        })
+
+@MainActor
+class AudioRecorderViewModel: NSObject, ObservableObject, AVAudioRecorderDelegate {
+    @Published var isRecording = false
+    @Published var audioLevel: Float = 0.0
+    @Published var selectedQuality: RecordingQuality = .medium
+
+    private var recorder: AVAudioRecorder?
+    private var meterTimer: Timer?
+
+    private let playerViewModel: AudioPlayerViewModel
+    private let modelContext: ModelContext
+    private let transcriptionManager: TranscriptionManager
+
+    init(playerViewModel: AudioPlayerViewModel, modelContext: ModelContext, transcriptionManager: TranscriptionManager) {
+        self.playerViewModel = playerViewModel
+        self.modelContext = modelContext
+        self.transcriptionManager = transcriptionManager
+        super.init()
+        setupAudioSessionObservers()
     }
 
-    private func handleInterruption(_ notification: Notification) {
+    func startRecording() {
+        let filename = "Recording_\(Date().timeIntervalSince1970).m4a"
+        let fileURL = getDocumentsDirectory().appendingPathComponent(filename)
+
+        let settings = selectedQuality.settings
+
+        do {
+            try configureAudioSessionForRecording()
+
+            recorder = try AVAudioRecorder(url: fileURL, settings: settings)
+            recorder?.delegate = self
+            recorder?.isMeteringEnabled = true
+            recorder?.record()
+
+            isRecording = true
+            startMetering()
+
+            print("[Recorder] Recording started at: \(fileURL)")
+        } catch {
+            print("[Recorder] Failed to start recording: \(error)")
+        }
+    }
+
+    func stopRecording() {
+        guard let recorder = recorder else { return }
+        recorder.stop()
+        stopMetering()
+
+        let recordedURL = recorder.url
+        let duration = recorder.currentTime
+
+        self.recorder = nil
+        isRecording = false
+
+        Task {
+            await encryptAndSaveRecording(at: recordedURL, duration: duration)
+        }
+    }
+
+    private func configureAudioSessionForRecording() throws {
+        let session = AVAudioSession.sharedInstance()
+
+        try session.setCategory(.playAndRecord,
+                                mode: .default,
+                                options: [
+                                    .defaultToSpeaker,
+                                    .allowBluetooth,
+                                    .allowAirPlay,
+                                    .mixWithOthers,
+                                    .duckOthers
+                                ])
+        try session.setActive(true, options: .notifyOthersOnDeactivation)
+    }
+
+    private func setupAudioSessionObservers() {
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(handleInterruption),
+                                               name: AVAudioSession.interruptionNotification,
+                                               object: AVAudioSession.sharedInstance())
+
+        NotificationCenter.default.addObserver(self,
+                                               selector: #selector(handleRouteChange),
+                                               name: AVAudioSession.routeChangeNotification,
+                                               object: AVAudioSession.sharedInstance())
+    }
+
+    @objc private func handleInterruption(notification: Notification) {
         guard let userInfo = notification.userInfo,
               let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
               let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
 
-        if type == .began {
-            pauseRecording()
-        } else if type == .ended {
-            try? session.setActive(true)
-            startRecording()
+        switch type {
+        case .began:
+            print("[Recorder] Interruption began")
+            if isRecording { stopRecording() }
+        case .ended:
+            print("[Recorder] Interruption ended")
+            try? AVAudioSession.sharedInstance().setActive(true)
+        @unknown default:
+            break
         }
     }
 
-    private func handleRouteChange(_ notification: Notification) {
-        print("Audio route changed: \(notification)")
+    @objc private func handleRouteChange(notification: Notification) {
+        guard let userInfo = notification.userInfo,
+              let reasonValue = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+
+        print("[Recorder] Audio route changed: \(reason)")
     }
 
-    func startRecording() {
-        recordingQueue.async {
-            do {
-                try self.session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
-                try self.session.setActive(true)
-
-                let inputNode = self.engine.inputNode
-                let format = inputNode.inputFormat(forBus: 0)
-
-                let fileName = "engineRecording_\(Date().timeIntervalSince1970).caf"
-                let fileURL = self.getDocumentsDirectory().appendingPathComponent(fileName)
-                self.outputURL = fileURL
-                self.audioFile = try AVAudioFile(forWriting: fileURL, settings: format.settings)
-
-                inputNode.removeTap(onBus: 0)
-                inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-                    try? self?.audioFile?.write(from: buffer)
-                    self?.updateLevel(buffer: buffer)
-                }
-
-                try self.engine.start()
-                DispatchQueue.main.async {
-                    self.isRecording = true
-                }
-            } catch {
-                print("Error starting recording: \(error)")
-            }
+    private func startMetering() {
+        meterTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            self.recorder?.updateMeters()
+            let level = self.recorder?.averagePower(forChannel: 0) ?? -120
+            self.audioLevel = max(0, (level + 120) / 120)
         }
     }
 
-    func pauseRecording() {
-        engine.pause()
-        isRecording = false
+    private func stopMetering() {
+        meterTimer?.invalidate()
+        meterTimer = nil
+        audioLevel = 0
     }
 
-    func stopRecording() {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        isRecording = false
-        try? session.setActive(false)
-
-        if let url = outputURL {
-            print("Recording saved at: \(url)")
-
-            Task {
-                await createRecordingSession(with: url)
-            }
-        }
-
-        playerViewModel?.refresh()
-    }
-
-    private func updateLevel(buffer: AVAudioPCMBuffer) {
-        let channelData = buffer.floatChannelData?[0]
-        let channelDataValue = channelData?.advanced(by: Int(buffer.frameLength / 2)).pointee ?? 0
-        let level = abs(channelDataValue)
-        DispatchQueue.main.async {
-            self.audioLevel = level
-        }
-    }
-
-    @MainActor
-    private func createRecordingSession(with url: URL) async {
+    private func encryptAndSaveRecording(at url: URL, duration: Double) async {
         do {
-            guard let container = try? ModelContainer(for: RecordingSession.self, TranscriptionSegment.self) else {
-                print("Failed to get SwiftData container")
-                return
-            }
-            let context = ModelContext(container)
+            let data = try Data(contentsOf: url)
+            let encryptedData = try EncryptionConfig.encrypt(data)
 
-            let audioFile = try AVAudioFile(forReading: url)
-            let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
-            print("Audio duration: \(duration) seconds")
+            let baseTitle = "Recording at \(formattedDateString())"
+            let count = await countRecordingsWithTitle(baseTitle)
+            let finalTitle = count > 0 ? "Recording \(count + 1) at \(formattedDateString())" : baseTitle
 
-            let formatter = DateFormatter()
-            formatter.dateStyle = .short
-            formatter.timeStyle = .short
-            let timestamp = formatter.string(from: Date())
+            let encryptedFilename = "\(UUID().uuidString).enc"
+            let encryptedURL = getDocumentsDirectory().appendingPathComponent(encryptedFilename)
+            try encryptedData.write(to: encryptedURL)
+
+            try FileManager.default.removeItem(at: url)
 
             let session = RecordingSession(
-                title: "Recording at \(timestamp)",
-                audioFileURL: url,
+                title: finalTitle,
+                filename: encryptedFilename,
                 createdAt: Date()
             )
+            modelContext.insert(session)
+            try modelContext.save()
 
-            var start: Double = 0.0
-            while start < duration {
-                let end = min(start + 30.0, duration)
-                let segment = TranscriptionSegment(
-                    startTime: start,
-                    endTime: end,
-                    audioFileURL: url
-                )
-                session.segments.append(segment)
-                start += 30.0
-            }
+            playerViewModel.refresh()
 
-            context.insert(session)
-            try context.save()
-
-            print("Saved RecordingSession with \(session.segments.count) segments")
-
-            let manager = TranscriptionManager(modelContext: context)
-            for segment in session.segments {
-                manager.queueSegment(segment)
-            }
+            transcriptionManager.queueSegment(for: session, startTime: 0, endTime: duration)
 
         } catch {
-            print("Error creating session: \(error)")
+            print("[Recorder] Encryption failed: \(error)")
         }
+    }
+
+    private func formattedDateString() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: Date())
     }
 
     private func getDocumentsDirectory() -> URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    private func countRecordingsWithTitle(_ title: String) async -> Int {
+        do {
+            let fetchDescriptor = FetchDescriptor<RecordingSession>(
+                predicate: #Predicate { $0.title.contains(title) }
+            )
+            return try modelContext.fetchCount(fetchDescriptor)
+        } catch {
+            print("[Recorder] Error counting recordings: \(error)")
+            return 0
+        }
     }
 }

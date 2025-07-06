@@ -1,58 +1,77 @@
-//
-//  AudioRecorderView.swift
-//  TwinMind Project
-//
-//  Created by Boba Fett on 7/2/25.
-//
-
 import SwiftUI
 
 struct AudioRecorderView: View {
     @ObservedObject var viewModel: AudioRecorderViewModel
+    
+    let ringGradient = AngularGradient(
+        gradient: Gradient(colors: [.red, .red.opacity(0.7), .red]),
+        center: .center
+    )
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text(viewModel.isRecording ? "Recording..." : "Ready to Record")
-                .font(.title2)
-                .bold()
-                .foregroundStyle(viewModel.isRecording ? .red : .primary)
-                .padding(.top, 8)
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
 
-            Circle()
-                .fill(viewModel.isRecording ? Color.red : Color.gray.opacity(0.3))
-                .frame(width: 100, height: 100)
-                .overlay(
+            VStack(spacing: 30) {
+                Text(viewModel.isRecording ? "Listening..." : "Tap to Record")
+                    .font(.title2)
+                    .bold()
+                    .foregroundColor(.white.opacity(0.9))
+                    .padding(.top, 30)
+
+                ZStack {
                     Circle()
-                        .strokeBorder(Color.red.opacity(0.8), lineWidth: 4)
-                        .scaleEffect(1 + CGFloat(viewModel.audioLevel * 2))
-                        .opacity(viewModel.isRecording ? 1 : 0)
-                        .animation(.easeOut(duration: 0.2), value: viewModel.audioLevel)
-                )
-                .shadow(radius: 6)
+                        .stroke(
+                            viewModel.isRecording
+                                ? AnyShapeStyle(ringGradient)
+                                : AnyShapeStyle(Color.blue),
+                            lineWidth: 12
+                        )
+                        .frame(width: 180, height: 180)
+                        .scaleEffect(
+                            viewModel.isRecording
+                            ? (0.5 + 0.5 * CGFloat(viewModel.audioLevel))
+                            : 0.75
+                        )
+                        .opacity(viewModel.isRecording ? 0.8 : 0.3)
+                        .blur(radius: 1.5)
 
-            Button(action: {
-                if viewModel.isRecording {
-                    viewModel.stopRecording()
-                } else {
-                    viewModel.startRecording()
+                    Circle()
+                        .fill(Color.black.opacity(0.8))
+                        .frame(width: 100, height: 100)
+                        .overlay(
+                            Image(systemName: "mic.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(viewModel.isRecording ? .red : .blue)
+                        )
+                        .shadow(radius: 10)
+                        .onTapGesture {
+                            if viewModel.isRecording {
+                                viewModel.stopRecording()
+                            } else {
+                                viewModel.startRecording()
+                            }
+                        }
                 }
-            }) {
-                HStack {
-                    Image(systemName: viewModel.isRecording ? "stop.fill" : "record.circle.fill")
-                        .font(.system(size: 32))
-                    Text(viewModel.isRecording ? "Stop" : "Record")
-                        .font(.title2)
-                        .bold()
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Recording Quality")
+                        .font(.headline)
+                        .foregroundColor(.white)
+
+                    Picker("Quality", selection: $viewModel.selectedQuality) {
+                        ForEach(RecordingQuality.allCases, id: \.self) { quality in
+                            Text(quality.description).tag(quality)
+                        }
+                    }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .background(Color(.systemGray6))
+                    .cornerRadius(8)
                 }
-                .padding()
-                .foregroundColor(.white)
-                .background(viewModel.isRecording ? Color.red : Color.blue)
-                .cornerRadius(12)
-                .shadow(radius: 4)
+                .padding(.horizontal)
             }
-
-            Spacer()
+            .padding()
         }
-        .padding()
     }
 }

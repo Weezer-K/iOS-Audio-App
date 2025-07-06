@@ -1,8 +1,5 @@
 //
-//  AudioRecorderView.swift
-//  TwinMind Project
-//
-//  Created by Boba Fett on 7/2/25.
+//  AudioPlayerView.swift
 //
 
 import SwiftUI
@@ -10,110 +7,140 @@ import SwiftData
 
 struct AudioPlayerView: View {
     @ObservedObject var viewModel: AudioPlayerViewModel
-
-    @Query(filter: nil, sort: \RecordingSession.createdAt, order: .reverse)
-    var sessions: [RecordingSession]
-
     @State private var expandedSessionID: UUID?
 
     var body: some View {
         VStack(alignment: .leading) {
-            Text("Recordings")
-                .font(.largeTitle)
-                .padding(.horizontal)
-
-            if sessions.isEmpty {
-                Text("No recordings found")
-                    .foregroundStyle(.secondary)
-                    .padding()
-            } else {
-                ScrollView {
-                    VStack(spacing: 16) {
-                        ForEach(sessions, id: \.id) { session in
-                            VStack(alignment: .leading, spacing: 12) {
-                                HStack {
-                                    Text(session.title)
-                                        .font(.headline)
-
-                                    Spacer()
-
-                                    Button {
-                                        viewModel.deleteRecording(at: session.audioFileURL)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .tint(.red)
-                                }
-                                HStack {
-                                    Button {
-                                        viewModel.togglePlayback(for: session.audioFileURL)
-                                    } label: {
-                                        Label(
-                                            viewModel.isPlaying && viewModel.currentlyPlayingURL == session.audioFileURL ? "Stop" : "Play",
-                                            systemImage: viewModel.isPlaying && viewModel.currentlyPlayingURL == session.audioFileURL ? "stop.fill" : "play.fill"
-                                        )
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .tint(.blue)
-
-                                    Spacer()
-
-                                    Button {
-                                        withAnimation {
-                                            expandedSessionID = expandedSessionID == session.id ? nil : session.id
-                                        }
-                                    } label: {
-                                        Label("Transcript", systemImage: "text.bubble")
-                                    }
-                                    .buttonStyle(.bordered)
-                                    .tint(.blue)
-                                }
-                                if expandedSessionID == session.id {
-                                    segmentList(for: session)
-                                        .padding(.top, 6)
-                                }
-                            }
-                            .padding()
-                            .background(Color(.systemGroupedBackground))
-                            .cornerRadius(12)
-                            .shadow(radius: 1)
-                            .padding(.horizontal)
+            ScrollView {
+                VStack(spacing: 16) {
+                    if viewModel.recordings.isEmpty {
+                        emptyStateRow()
+                    } else {
+                        ForEach(viewModel.recordings, id: \.id) { session in
+                            recordingRow(for: session)
                         }
                     }
-                    .padding(.vertical)
                 }
+                .padding()
             }
         }
     }
+}
+
+extension AudioPlayerView {
+    private func emptyStateRow() -> some View {
+        VStack(spacing: 12) {
+            Text("No recordings found")
+                .foregroundStyle(.secondary)
+                .italic()
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.horizontal)
+        }
+        .padding(.vertical, 12)
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+        .shadow(radius: 1)
+    }
+
+    private func recordingRow(for session: RecordingSession) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(session.title)
+                    .font(.headline)
+                Spacer()
+                deleteButton(session)
+            }
+            .padding(.horizontal)
+            
+            HStack {
+                playbackButton(session)
+                Spacer()
+                transcriptButton(session)
+            }
+            .padding(.horizontal)
+
+            if expandedSessionID == session.id {
+                segmentList(session)
+                    .padding(.horizontal)
+            }
+        }
+        .padding(.vertical, 12)
+        .background(Color(.systemGray6))
+        .cornerRadius(12)
+        .shadow(radius: 1)
+    }
+
+    private func playbackButton(_ session: RecordingSession) -> some View {
+        Button {
+            viewModel.togglePlayback(for: session)
+        } label: {
+            HStack {
+                Image(systemName: viewModel.isPlaying && viewModel.currentlyPlayingSessionID == session.id ? "stop.fill" : "play.fill")
+                Text(viewModel.isPlaying && viewModel.currentlyPlayingSessionID == session.id ? "Stop" : "Play")
+            }
+        }
+        .buttonStyle(.bordered)
+    }
     
-    private func segmentList(for session: RecordingSession) -> some View {
-        if session.segments.isEmpty {
-            return AnyView(
-                Text("No transcription yet")
-                    .font(.subheadline)
+    private func transcriptButton(_ session: RecordingSession) -> some View {
+        Button {
+            if expandedSessionID == session.id {
+                expandedSessionID = nil
+            } else {
+                expandedSessionID = session.id
+                if session.segments.isEmpty {
+                    viewModel.transcriptionManager?.queueSegment(for: session, startTime: 0, endTime: 0)
+                }
+            }
+        } label: {
+            HStack {
+                Image(systemName: "text.bubble")
+                Text("Transcript")
+            }
+        }
+        .buttonStyle(.bordered)
+        .disabled(viewModel.transcriptionManager == nil)
+    }
+
+    private func deleteButton(_ session: RecordingSession) -> some View {
+        Button {
+            viewModel.deleteSession(session)
+        } label: {
+            Image(systemName: "trash")
+        }
+        .buttonStyle(.bordered)
+        .tint(.red)
+    }
+
+    private func segmentList(_ session: RecordingSession) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if session.segments.isEmpty {
+                Text("No transcript yet.")
                     .foregroundStyle(.secondary)
-            )
-        } else {
-            return AnyView(
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(session.segments, id: \.id) { segment in
-                        VStack(alignment: .leading, spacing: 2) {
-                            if segment.status == "completed" {
-                                Text(segment.text ?? "No text")
-                                    .font(.subheadline)
-                            } else if segment.status == "transcribing" {
-                                Text("Transcribing...")
-                                    .italic()
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text("Not transcribed")
-                                    .foregroundStyle(.secondary)
-                            }
+                    .italic()
+            } else {
+                ForEach(session.segments) { segment in
+                    VStack(alignment: .leading, spacing: 4) {
+                        if segment.status == "complete" {
+                            Text(segment.text)
+                                .font(.subheadline)
+                        } else if segment.status == "transcribing" {
+                            Text("Transcribing…")
+                                .italic()
+                                .foregroundStyle(.secondary)
+                        } else if segment.status == "error" {
+                            Text("Error: Failed to transcribe")
+                                .foregroundStyle(.red)
+                                .italic()
+                        } else {
+                            Text("Not transcribed")
+                                .foregroundStyle(.secondary)
                         }
                     }
+                    .padding(.vertical, 4)
                 }
-            )
+            }
         }
+        .padding(.top, 4)
     }
 }

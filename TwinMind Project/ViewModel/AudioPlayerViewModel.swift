@@ -1,50 +1,31 @@
-//
-//  AudioPlayerViewModel.swift
-//  TwinMind Project
-//
-//  Created by Boba Fett on 7/2/25.
-//
-
 import SwiftUI
 import AVFoundation
+import SwiftData
 
 class AudioPlayerViewModel: NSObject, ObservableObject, AVAudioPlayerDelegate {
-    @Published var recordings: [URL] = []
-    @Published var currentlyPlayingURL: URL?
+    @Published var recordings: [RecordingSession] = []
+    @Published var currentlyPlayingSessionID: UUID?
     @Published var isPlaying = false
 
     private var player: AVAudioPlayer?
+    private let modelContext: ModelContext
+    let transcriptionManager: TranscriptionManager?
 
-    override init() {
+    init(modelContext: ModelContext, transcriptionManager: TranscriptionManager? = nil) {
+        self.modelContext = modelContext
+        self.transcriptionManager = transcriptionManager
         super.init()
         loadRecordings()
     }
-    
+
     func loadRecordings() {
-        recordings.removeAll()
-
-        let documentsURL = getDocumentsDirectory()
         do {
-            let allFiles = try FileManager.default.contentsOfDirectory(
-                at: documentsURL,
-                includingPropertiesForKeys: [.creationDateKey],
-                options: .skipsHiddenFiles
+            let fetch = FetchDescriptor<RecordingSession>(
+                sortBy: [SortDescriptor(\.createdAt, order: .reverse)]
             )
-
-            let audioFiles = allFiles.filter {
-                $0.pathExtension.lowercased() == "caf" || $0.pathExtension.lowercased() == "m4a"
-            }
-
-            let sortedAudioFiles = audioFiles.sorted { file1, file2 in
-                let date1 = (try? file1.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-                let date2 = (try? file2.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
-                return date1 > date2
-            }
-
-            recordings = sortedAudioFiles
-
+            self.recordings = try modelContext.fetch(fetch)
         } catch {
-            print("Failed to list recordings: \(error)")
+            print("Failed to fetch recordings: \(error)")
         }
     }
 
@@ -52,28 +33,36 @@ class AudioPlayerViewModel: NSObject, ObservableObject, AVAudioPlayerDelegate {
         loadRecordings()
     }
 
-    func togglePlayback(for url: URL) {
-        if currentlyPlayingURL == url && isPlaying {
+    func togglePlayback(for session: RecordingSession) {
+        if currentlyPlayingSessionID == session.id && isPlaying {
             stopPlayback()
         } else {
-            playRecording(url: url)
+            playRecording(for: session)
         }
     }
 
-    func playRecording(url: URL) {
+    private func playRecording(for session: RecordingSession) {
         stopPlayback()
 
         do {
+            let encryptedURL = getDocumentsDirectory().appendingPathComponent(session.filename)
+            let encryptedData = try Data(contentsOf: encryptedURL)
+            let decryptedData = try EncryptionConfig.decrypt(encryptedData)
+
+            let tempURL = getTempDirectory().appendingPathComponent("temp_decrypted_\(UUID().uuidString).m4a")
+            try decryptedData.write(to: tempURL)
+
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
 
-            player = try AVAudioPlayer(contentsOf: url)
+            player = try AVAudioPlayer(contentsOf: tempURL)
             player?.delegate = self
             player?.prepareToPlay()
             player?.play()
 
-            currentlyPlayingURL = url
+            currentlyPlayingSessionID = session.id
             isPlaying = true
+
         } catch {
             print("Failed to play recording: \(error)")
         }
@@ -82,26 +71,31 @@ class AudioPlayerViewModel: NSObject, ObservableObject, AVAudioPlayerDelegate {
     func stopPlayback() {
         player?.stop()
         isPlaying = false
-        currentlyPlayingURL = nil
+        currentlyPlayingSessionID = nil
     }
 
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         DispatchQueue.main.async {
             self.isPlaying = false
-            self.currentlyPlayingURL = nil
-        }
-    }
-
-    func deleteRecording(at url: URL) {
-        do {
-            try FileManager.default.removeItem(at: url)
-            refresh()
-        } catch {
-            print("Failed to delete recording: \(error)")
+            self.currentlyPlayingSessionID = nil
         }
     }
 
     private func getDocumentsDirectory() -> URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
+    private func getTempDirectory() -> URL {
+        FileManager.default.temporaryDirectory
+    }
+
+    func deleteSession(_ session: RecordingSession) {
+        do {
+            modelContext.delete(session)
+            try modelContext.save()
+            refresh()
+        } catch {
+            print("Failed to delete session: \(error)")
+        }
     }
 }

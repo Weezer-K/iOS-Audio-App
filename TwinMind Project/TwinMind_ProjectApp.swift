@@ -2,7 +2,7 @@
 //  TwinMind_ProjectApp.swift
 //  TwinMind Project
 //
-//  Created by Boba Fett on 7/2/25.
+//  Created by Kyle Peters on 7/2/25.
 //
 
 import SwiftUI
@@ -20,7 +20,7 @@ struct TwinMindApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(modelContext: modelContainer.mainContext)
                 .modelContainer(modelContainer)
         }
     }

@@ -1,8 +1,5 @@
 //
 //  ContentView.swift
-//  TwinMind Project
-//
-//  Created by Boba Fett on 7/2/25.
 //
 
 import SwiftUI
@@ -13,16 +10,28 @@ struct ContentView: View {
     @StateObject private var playerViewModel: AudioPlayerViewModel
     @StateObject private var recorderViewModel: AudioRecorderViewModel
 
-    init() {
-        let playerVM = AudioPlayerViewModel()
+    init(modelContext: ModelContext) {
+        let transcriptionManager = TranscriptionManager(modelContext: modelContext)
+
+        let playerVM = AudioPlayerViewModel(
+            modelContext: modelContext,
+            transcriptionManager: transcriptionManager
+        )
+
         _playerViewModel = StateObject(wrappedValue: playerVM)
-        _recorderViewModel = StateObject(wrappedValue: AudioRecorderViewModel(playerViewModel: playerVM))
+
+        _recorderViewModel = StateObject(
+            wrappedValue: AudioRecorderViewModel(
+                playerViewModel: playerVM,
+                modelContext: modelContext,
+                transcriptionManager: transcriptionManager
+            )
+        )
     }
 
     var body: some View {
-        VStack(spacing: 30) {
+        VStack(spacing: 0) {
             AudioRecorderView(viewModel: recorderViewModel)
-                .padding()
                 .background(Color(.systemGroupedBackground))
                 .cornerRadius(12)
                 .shadow(radius: 1)

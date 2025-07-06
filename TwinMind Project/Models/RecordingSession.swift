@@ -2,8 +2,6 @@
 //  RecordingSession.swift
 //  TwinMind Project
 //
-//  Created by Boba Fett on 7/3/25.
-//
 
 import SwiftData
 import Foundation
@@ -15,16 +13,16 @@ class RecordingSession {
     @Attribute
     var title: String
     @Attribute
-    var audioFileURL: URL
+    var filename: String
     @Attribute
     var createdAt: Date
     @Relationship
     var segments: [TranscriptionSegment]
 
-    init(title: String, audioFileURL: URL, createdAt: Date = Date()) {
+    init(title: String, filename: String, createdAt: Date = Date()) {
         self.id = UUID()
         self.title = title
-        self.audioFileURL = audioFileURL
+        self.filename = filename
         self.createdAt = createdAt
         self.segments = []
     }

@@ -2,26 +2,31 @@
 //  TranscriptionSegment.swift
 //  TwinMind Project
 //
-//  Created by Boba Fett on 7/3/25.
-//
 
-import Foundation
 import SwiftData
+import Foundation
 
 @Model
-class TranscriptionSegment {
+class TranscriptionSegment: Identifiable {
+    @Attribute
     var id: UUID
+    @Attribute
     var startTime: Double
+    @Attribute
     var endTime: Double
-    var audioFileURL: URL
-    var text: String?
+    @Attribute
+    var audioFilename: String
+    @Attribute
     var status: String
+    @Attribute
+    var text: String
 
-    init(startTime: Double, endTime: Double, audioFileURL: URL) {
+    init(startTime: Double, endTime: Double, audioFilename: String) {
         self.id = UUID()
         self.startTime = startTime
         self.endTime = endTime
-        self.audioFileURL = audioFileURL
+        self.audioFilename = audioFilename
         self.status = "queued"
+        self.text = ""
     }
 }

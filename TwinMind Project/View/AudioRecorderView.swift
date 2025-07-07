@@ -1,8 +1,14 @@
+//
+//  AudioRecorderView.swift
+//  TwinMind Project
+//
+//  Created by Kyle Peters on 7/2/25.
+//
 import SwiftUI
+import UIKit
 
 struct AudioRecorderView: View {
     @ObservedObject var viewModel: AudioRecorderViewModel
-    
     let ringGradient = AngularGradient(
         gradient: Gradient(colors: [.red, .red.opacity(0.7), .red]),
         center: .center
@@ -10,13 +16,11 @@ struct AudioRecorderView: View {
 
     var body: some View {
         ZStack {
-            Color.black
-                .ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
             VStack(spacing: 30) {
                 Text(viewModel.isRecording ? "Listening..." : "Tap to Record")
-                    .font(.title2)
-                    .bold()
+                    .font(.title2).bold()
                     .foregroundColor(.white.opacity(0.9))
                     .padding(.top, 30)
 
@@ -31,8 +35,8 @@ struct AudioRecorderView: View {
                         .frame(width: 180, height: 180)
                         .scaleEffect(
                             viewModel.isRecording
-                            ? (0.5 + 0.5 * CGFloat(viewModel.audioLevel))
-                            : 0.75
+                                ? (0.5 + 0.5 * CGFloat(viewModel.audioLevel))
+                                : 0.75
                         )
                         .opacity(viewModel.isRecording ? 0.8 : 0.3)
                         .blur(radius: 1.5)
@@ -54,18 +58,18 @@ struct AudioRecorderView: View {
                             }
                         }
                 }
-                
+
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Recording Quality")
                         .font(.headline)
                         .foregroundColor(.white)
 
                     Picker("Quality", selection: $viewModel.selectedQuality) {
-                        ForEach(RecordingQuality.allCases, id: \.self) { quality in
+                        ForEach(RecordingQuality.allCases) { quality in
                             Text(quality.description).tag(quality)
                         }
                     }
-                    .pickerStyle(SegmentedPickerStyle())
+                    .pickerStyle(.segmented)
                     .background(Color(.systemGray6))
                     .cornerRadius(8)
                 }
@@ -73,5 +77,7 @@ struct AudioRecorderView: View {
             }
             .padding()
         }
+        .onAppear  { viewModel.isRecorderViewVisible = true  }
+        .onDisappear { viewModel.isRecorderViewVisible = false }
     }
 }

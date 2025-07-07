@@ -1,67 +1,113 @@
 //
 //  EncryptionConfig.swift
+//  TwinMind Project
+//
+//  Created by Kyle Peters on 7/4/25.
 //
 
 import CryptoKit
 import Foundation
-import SwiftUICore
+
+import CryptoKit
+import Foundation
 
 enum EncryptionConfig {
-    private static let keyKey = "encryptionSymmetricKey"
+  static let keyTag = "com.twinmind.audioencryption.key"
 
-    static var sharedKey: SymmetricKey = {
-        if let base64 = UserDefaults.standard.string(forKey: keyKey),
-           let data = Data(base64Encoded: base64) {
-            return SymmetricKey(data: data)
-        } else {
-            let key = SymmetricKey(size: .bits256)
-            let base64 = key.withUnsafeBytes { Data($0).base64EncodedString() }
-            UserDefaults.standard.set(base64, forKey: keyKey)
-            return key
-        }
-    }()
-
-    static func encrypt(_ data: Data) throws -> Data {
-        let sealedBox = try AES.GCM.seal(data, using: sharedKey)
-        guard let combined = sealedBox.combined else {
-            throw NSError(domain: "Encryption", code: -1)
-        }
-        return combined
+  static let sharedKey: SymmetricKey = {
+    if let existing = KeychainHelper.loadKey(forKey: keyTag) {
+      return existing
+    } else {
+      let newKey = SymmetricKey(size: .bits256)
+      try? KeychainHelper.save(key: newKey, forKey: keyTag)
+      return newKey
     }
+  }()
 
-    static func decrypt(_ data: Data) throws -> Data {
-        let sealedBox = try AES.GCM.SealedBox(combined: data)
-        return try AES.GCM.open(sealedBox, using: sharedKey)
+  static func encrypt(_ data: Data) throws -> Data {
+    let box = try AES.GCM.seal(data, using: sharedKey)
+    guard let combined = box.combined else {
+      throw NSError(
+        domain: "Encryption", code: 0,
+        userInfo: [NSLocalizedDescriptionKey: "seal failed"]
+      )
     }
+    return combined
+  }
+
+  static func decrypt(_ data: Data) throws -> Data {
+    let box = try AES.GCM.SealedBox(combined: data)
+    return try AES.GCM.open(box, using: sharedKey)
+  }
 }
 
 enum KeychainHelper {
     static func save(key: SymmetricKey, forKey keyName: String) throws {
         let data = key.withUnsafeBytes { Data($0) }
         let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: keyName,
-            kSecValueData as String: data
+            kSecClass as String:             kSecClassGenericPassword,
+            kSecAttrAccount as String:       keyName,
+            kSecValueData as String:         data
         ]
         SecItemDelete(query as CFDictionary)
         let status = SecItemAdd(query as CFDictionary, nil)
-        if status != errSecSuccess {
+        guard status == errSecSuccess else {
             throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
         }
     }
 
     static func loadKey(forKey keyName: String) -> SymmetricKey? {
         let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrAccount as String: keyName,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
+            kSecClass as String:           kSecClassGenericPassword,
+            kSecAttrAccount as String:     keyName,
+            kSecMatchLimit as String:      kSecMatchLimitOne,
+            kSecReturnData as String:      true
         ]
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        guard status == errSecSuccess, let data = item as? Data else {
-            return nil
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecSuccess, let data = result as? Data {
+            return SymmetricKey(data: data)
         }
-        return SymmetricKey(data: data)
+        return nil
+    }
+
+    static private let apiKeyTag = "com.twinmind.deepgramApiKey"
+    static private let encryptionKeyTag = "com.twinmind.encryptionKey"
+
+    static func saveAPIKey(_ apiKey: String) throws {
+        let data = Data(apiKey.utf8)
+        let query: [String: Any] = [
+            kSecClass as String:           kSecClassGenericPassword,
+            kSecAttrAccount as String:     apiKeyTag,
+            kSecValueData as String:       data
+        ]
+        SecItemDelete(query as CFDictionary)
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+        }
+    }
+
+    static func loadAPIKey() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String:           kSecClassGenericPassword,
+            kSecAttrAccount as String:     apiKeyTag,
+            kSecMatchLimit as String:      kSecMatchLimitOne,
+            kSecReturnData as String:      true
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecSuccess, let data = result as? Data {
+            return String(data: data, encoding: .utf8)
+        }
+        return nil
+    }
+
+    static func saveEncryptionKey(_ key: SymmetricKey) throws {
+        try save(key: key, forKey: encryptionKeyTag)
+    }
+    
+    static func loadEncryptionKey() -> SymmetricKey? {
+        return loadKey(forKey: encryptionKeyTag)
     }
 }

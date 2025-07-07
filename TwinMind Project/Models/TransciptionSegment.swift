@@ -1,8 +1,3 @@
-//
-//  TranscriptionSegment.swift
-//  TwinMind Project
-//
-
 import SwiftData
 import Foundation
 
@@ -21,12 +16,16 @@ class TranscriptionSegment: Identifiable {
     @Attribute
     var text: String
 
-    init(startTime: Double, endTime: Double, audioFilename: String) {
+    @Relationship
+    var session: RecordingSession
+
+    init(startTime: Double, endTime: Double, audioFilename: String, session: RecordingSession) {
         self.id = UUID()
         self.startTime = startTime
         self.endTime = endTime
         self.audioFilename = audioFilename
         self.status = "queued"
         self.text = ""
+        self.session = session
     }
 }
